@@ -6,46 +6,29 @@ import firebase_admin
 from firebase_admin import credentials, db
 
 # ---------- CONFIG ----------
-FIREBASE_KEYFILE = "firebase-key.json"  # downloaded service account JSON
+FIREBASE_KEYFILE = "firebase-key.json"
 FIREBASE_DB_URL = "https://smart-trash-bin-984a8-default-rtdb.asia-southeast1.firebasedatabase.app/"
 SERIAL_BAUD = 9600
-# If you know the port (Windows: "COM3", Linux: "/dev/ttyUSB0"), set SERIAL_PORT.
-# Otherwise leave None and the script will try to auto-detect.
+# Set SERIAL_PORT to "COM6" or "/dev/ttyUSB0" if you know it; otherwise leave None for auto-detect.
 SERIAL_PORT = "COM6"
 
-# Upload settings
-UPLOAD_THROTTLE = 0.2   # seconds between uploads (to avoid spamming Firebase)
-WRITE_MODE = "set"      # "set" to overwrite latest value, "push" to append historical entries
+# Upload policy
+UPLOAD_THROTTLE_S = 0.25   # minimum seconds between uploads per sensor
+WRITE_MODE = "set"         # "set" to overwrite latest, "push" to append to logs
+DB_PATH = "sensors"        # base path in RTDB
 # ----------------------------
+
+LINE_RE = re.compile(r"(Lid|Fullness)\s*Distance\s*:\s*(-?\d+(\.\d+)?)\s*cm", re.IGNORECASE)
 
 def find_serial_port():
   if SERIAL_PORT:
     return SERIAL_PORT
   ports = list(serial.tools.list_ports.comports())
   for p in ports:
-    # Heuristic: Arduino Uno often has "Arduino", "USB-SERIAL", "CH340" in the description
     desc = (p.description or "").lower()
     if "arduino" in desc or "ch340" in desc or "usb-serial" in desc:
       return p.device
-  # fallback to first available
   return ports[0].device if ports else None
-
-def parse_distance(line):
-  """
-  Parse lines like:
-    "Distance: 45cm"
-    "distance: 12 cm"
-    "Distance=78.5 cm"
-  Returns numeric value as float, or None on failure.
-  """
-  m = re.search(r"(-?\d+(\.\d+)?)\s*cm", line, re.IGNORECASE)
-  if m:
-    return float(m.group(1))
-  # try generic number if "cm" missing
-  m = re.search(r"(-?\d+(\.\d+)?)", line)
-  if m:
-    return float(m.group(1))
-  return None
 
 def init_firebase():
   cred = credentials.Certificate(FIREBASE_KEYFILE)
@@ -53,57 +36,67 @@ def init_firebase():
     'databaseURL': FIREBASE_DB_URL
   })
 
+def parse_line(line):
+  """
+  Returns tuple (sensor_name, value_float) or (None, None) if no match.
+  e.g. "Lid Distance: 6cm" -> ("Lid", 6.0)
+  """
+  m = LINE_RE.search(line)
+  if not m:
+    return None, None
+  name = m.group(1).strip().lower()   # "lid" or "fullness"
+  val = float(m.group(2))
+  return name, val
+
 def main():
   port = find_serial_port()
   if not port:
-    print("No serial ports found. Plug in the Arduino and try again.")
+    print("No serial port detected. Plug in Arduino and try again.")
     return
 
   print(f"Using serial port: {port}")
   init_firebase()
-  ref = db.reference("sensors/ultrasonic")  # change path as you like
+  base_ref = db.reference(DB_PATH)
 
   ser = None
-  last_upload = 0.0
+  last_upload = {"lid": 0.0, "fullness": 0.0}
 
   while True:
     try:
       if ser is None:
         ser = serial.Serial(port, SERIAL_BAUD, timeout=1)
         print("Serial opened.")
-        # give Arduino a second to reset after opening serial
-        time.sleep(1.0)
+        time.sleep(1.0)  # allow Arduino reset
 
-      line = ser.readline().decode(errors="ignore").strip()
-      if not line:
+      raw = ser.readline().decode(errors="ignore").strip()
+      if not raw:
         continue
 
-      # Example Arduino line: "Distance: 45cm"
-      print("RAW:", line)
-      value = parse_distance(line)
-      if value is None:
-        # nothing parsed — ignore or log
+      print("RAW:", raw)
+      sensor, value = parse_line(raw)
+      if sensor is None:
+        # Unrecognized line; ignore
         continue
 
       now = time.time()
-      if now - last_upload < UPLOAD_THROTTLE:
-        # skip upload (throttle)
+      if now - last_upload.get(sensor, 0) < UPLOAD_THROTTLE_S:
+        # throttled
         continue
 
       payload = {
-        "distance_cm": value,
-        "ts": int(now)            # unix seconds
+        "value_cm": value,
+        "ts": int(now)
       }
 
       if WRITE_MODE == "set":
-        # Overwrite latest
-        ref.set(payload)
+        # overwrite latest
+        base_ref.child(sensor).set(payload)
       else:
-        # Append historical record under /sensors/ultrasonic/logs/<push_id>
-        ref.child("logs").push(payload)
+        # push historical log
+        base_ref.child(sensor).child("logs").push(payload)
 
-      print("Uploaded:", payload)
-      last_upload = now
+      print(f"Uploaded {sensor}: {payload}")
+      last_upload[sensor] = now
 
     except serial.SerialException as e:
       print("Serial error:", e)
@@ -114,7 +107,6 @@ def main():
       break
     except Exception as e:
       print("Error:", e)
-      # keep running
       time.sleep(0.1)
 
 if __name__ == "__main__":
