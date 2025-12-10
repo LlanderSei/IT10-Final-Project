@@ -60,10 +60,11 @@ long readUltrasonicDistance(int trigPin, int echoPin, String dataName)
 
 void runServo(int cm)
 {
-  if (cm <= 10)
+  if (cm <= 20)
   {
-    for (servoPos; servoPos <= 60; servoPos += 1)
+    for (servoPos; servoPos <= 75; servoPos += 1)
     {
+      printServoPos();
       servo.write(servoPos);
       lidOpen = true;
     }
@@ -72,6 +73,8 @@ void runServo(int cm)
 
   for (servoPos; servoPos >= 0; servoPos -= 1)
   {
+    printServoPos();
+    servo.write(servoPos);
     if (servoPos <= 0)
     {
       lidOpen = false;
