@@ -16,6 +16,10 @@ dependencies:
   firebase_database: ^11.0.0
   # Local notifications
   flutter_local_notifications: ^17.0.0
+  # Toast notifications
+  fluttertoast: ^8.2.4
+  # Permission handler
+  permission_handler: ^11.3.0
 
 dev_dependencies:
   flutter_test:
