@@ -62,7 +62,7 @@ void runServo(int cm)
 {
   if (cm <= 20)
   {
-    for (servoPos; servoPos <= 75; servoPos += 1)
+    for (servoPos; servoPos <= 70; servoPos += 1)
     {
       printServoPos();
       servo.write(servoPos);

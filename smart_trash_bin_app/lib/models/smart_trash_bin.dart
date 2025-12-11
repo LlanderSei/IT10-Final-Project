@@ -13,7 +13,13 @@ class SmartTrashBin {
     this.hasNotifiedHalf = false,
   });
 
-  factory SmartTrashBin.fromJson(Map<String, dynamic> json) {
+  factory SmartTrashBin.fromJson(
+    Map<String, dynamic> json,
+    bool hasNotifiedFull,
+    bool hasNotifiedHalf, {
+    required int trashBinHeight,
+    required int lidDetectionRange,
+  }) {
     final fullness = json['fullness'];
     if (fullness is! Map) {
       throw Exception("Fullness data is not a map");
@@ -26,32 +32,27 @@ class SmartTrashBin {
     }
     final lidMap = Map<String, dynamic>.from(lid as Map);
 
-    // Assuming fullness value_cm is the distance, calculate percentage
-    // Thresholds: 100cm (empty), 50cm (half), <10cm (full)
+    // Assuming fullness value_cm is the distance from sensor to trash level
     final valueCm = (fullnessMap['value_cm'] as num?)?.toDouble();
     if (valueCm == null) {
       throw Exception("Fullness value_cm is null, fullness: $fullnessMap");
     }
     double percentage;
-    if (valueCm >= 100) {
+    if (valueCm >= trashBinHeight) {
       percentage = 0; // Empty
-    } else if (valueCm <= 10) {
+    } else if (valueCm <= 0) {
       percentage = 100; // Full
     } else {
-      // Linear interpolation between 100cm (0%) and 10cm (100%)
-      percentage = ((100 - valueCm) / (100 - 10)) * 100;
+      // Linear interpolation: 0% at trashBinHeight, 100% at 0
+      percentage = (1 - valueCm / trashBinHeight) * 100;
     }
 
-    // Lid is open if value_cm is below a certain threshold (e.g., 50cm)
+    // Lid is open if value_cm is below lidDetectionRange
     final lidValueCm = (lid['value_cm'] as num?)?.toDouble();
     if (lidValueCm == null) {
       throw Exception("Lid value_cm is null");
     }
-    final isLidOpen = lidValueCm < 50;
-
-    final notifications = json['notifications'] as Map<dynamic, dynamic>? ?? {};
-    final hasNotifiedFull = notifications['hasNotifiedFull'] as bool? ?? false;
-    final hasNotifiedHalf = notifications['hasNotifiedHalf'] as bool? ?? false;
+    final isLidOpen = lidValueCm < lidDetectionRange;
 
     return SmartTrashBin(
       fullnessPercentage: percentage.clamp(0, 100),

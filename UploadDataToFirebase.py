@@ -10,7 +10,7 @@ FIREBASE_KEYFILE = "firebase-key.json"
 FIREBASE_DB_URL = "https://smart-trash-bin-984a8-default-rtdb.asia-southeast1.firebasedatabase.app/"
 SERIAL_BAUD = 9600
 # Set SERIAL_PORT to "COM6" or "/dev/ttyUSB0" if you know it; otherwise leave None for auto-detect.
-SERIAL_PORT = "COM6"
+SERIAL_PORT = None
 
 # Upload policy
 UPLOAD_THROTTLE_S = 0.25   # minimum seconds between uploads per sensor
